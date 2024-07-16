@@ -24,24 +24,41 @@ def convert_images():
 
     for file_path in file_paths:
         try:
-            with Image.open(file_path) as img:
+            img = Image.open(file_path)
+            if img.mode != "RGBA" and img.mode != "RGB":
+                img = img.convert("RGBA")
+
+            file_dir, file_name = os.path.split(file_path)
+            base_name = os.path.splitext(file_name)[0]
+            output_path = os.path.join(file_dir, f"{base_name}.{extension}")
+
+            # Ensure no overwriting by incrementing filename
+            original_output_path = output_path
+            counter = 1
+            while os.path.exists(output_path):
+                output_path = os.path.join(file_dir, f"{base_name}({counter}).{extension}")
+                counter += 1
+
+            if output_format in ["JPEG", "BMP"]:
+                # For formats that do not support transparency
                 if img.mode == "RGBA":
-                    # Handling transparency by converting it to a white background for non-GIF formats
                     background = Image.new("RGB", img.size, (255, 255, 255))
-                    background.paste(img, mask=img.split()[3])  # 3 is the alpha channel
-                    img = background.convert('P', palette=Image.ADAPTIVE, colors=256) if output_format == "GIF" else background
+                    background.paste(img, mask=img.split()[3])  # Mask for transparency
+                    img = background
 
-                file_dir, file_name = os.path.split(file_path)
-                base_name = os.path.splitext(file_name)[0]
-                output_path = os.path.join(file_dir, f"{base_name}.{extension}")
-                
-                # Automatically manage file naming to avoid overwrites
-                counter = 1
-                while os.path.exists(output_path):
-                    output_path = os.path.join(file_dir, f"{base_name}({counter}).{extension}")
-                    counter += 1
+            elif output_format == "GIF":
+                # Convert transparency for GIF
+                img = img.convert("RGBA")
+                background = Image.new("RGB", img.size, (255, 255, 255))
+                background.paste(img, mask=img.split()[3])
+                img = background.convert('P', palette=Image.ADAPTIVE, colors=256)
 
+            if output_format == "ICO":
+                # Handle ICO conversion; save it with the appropriate sizes
+                img.save(output_path, format='ICO', sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+            else:
                 img.save(output_path, format=output_format)
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to convert {file_path}\n{str(e)}")
             return
