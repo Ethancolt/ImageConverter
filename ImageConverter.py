@@ -25,15 +25,22 @@ def convert_images():
     for file_path in file_paths:
         try:
             with Image.open(file_path) as img:
-                if output_format == "JPEG" and img.mode in ("RGBA", "LA"):
-                    # Create a white background image
+                if img.mode == "RGBA":
+                    # Handling transparency by converting it to a white background for non-GIF formats
                     background = Image.new("RGB", img.size, (255, 255, 255))
-                    # Paste the image using alpha as a mask
                     background.paste(img, mask=img.split()[3])  # 3 is the alpha channel
-                    img = background
+                    img = background.convert('P', palette=Image.ADAPTIVE, colors=256) if output_format == "GIF" else background
+
                 file_dir, file_name = os.path.split(file_path)
-                new_file_name = f"{os.path.splitext(file_name)[0]}.{extension}"
-                output_path = os.path.join(file_dir, new_file_name)
+                base_name = os.path.splitext(file_name)[0]
+                output_path = os.path.join(file_dir, f"{base_name}.{extension}")
+                
+                # Automatically manage file naming to avoid overwrites
+                counter = 1
+                while os.path.exists(output_path):
+                    output_path = os.path.join(file_dir, f"{base_name}({counter}).{extension}")
+                    counter += 1
+
                 img.save(output_path, format=output_format)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to convert {file_path}\n{str(e)}")
