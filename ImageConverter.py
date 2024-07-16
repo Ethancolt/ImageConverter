@@ -1,48 +1,77 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import Image
+import os
 
-def convert_image():
-    file_path = filedialog.askopenfilename(title="Select an image", filetypes=[("Image files", "*.jpg *.jpeg *.png *.webp")])
-    if not file_path:
+def convert_images():
+    file_paths = filedialog.askopenfilenames(
+        title="Select images",
+        filetypes=[
+            ("Image files", "*.jpg *.jpeg *.png *.webp *.bmp *.gif *.tiff *.ico"),
+            ("JPEG", "*.jpg *.jpeg"),
+            ("PNG", "*.png"),
+            ("WEBP", "*.webp"),
+            ("BMP", "*.bmp"),
+            ("GIF", "*.gif"),
+            ("TIFF", "*.tiff"),
+            ("ICO", "*.ico")
+        ])
+    if not file_paths:
         return
 
     format_choice = format_var.get()
     output_format, extension = format_settings[format_choice]
 
-    output_path = filedialog.asksaveasfilename(title="Save as", defaultextension=f".{extension}", filetypes=[("Image files", f"*.{extension}")])
-    if not output_path:
-        return
+    for file_path in file_paths:
+        try:
+            with Image.open(file_path) as img:
+                if output_format == "JPEG" and img.mode in ("RGBA", "LA"):
+                    # Create a white background image
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    # Paste the image using alpha as a mask
+                    background.paste(img, mask=img.split()[3])  # 3 is the alpha channel
+                    img = background
+                file_dir, file_name = os.path.split(file_path)
+                new_file_name = f"{os.path.splitext(file_name)[0]}.{extension}"
+                output_path = os.path.join(file_dir, new_file_name)
+                img.save(output_path, format=output_format)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to convert {file_path}\n{str(e)}")
+            return
 
-    try:
-        with Image.open(file_path) as img:
-            img.save(output_path, format=output_format)
-        messagebox.showinfo("Success", f"Image successfully converted to {output_format} and saved as {output_path}")
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
+    messagebox.showinfo("Success", f"All selected images have been converted to {output_format} and saved in the same directory.")
 
 root = tk.Tk()
-root.title("Image Converter")
-root.geometry("500x300")  # Increased size for better layout
+root.title("Batch Image Converter")
+root.geometry("500x500")
 
 style = ttk.Style()
 style.configure('TButton', font=('Helvetica', 10), padding=10)
 style.configure('TRadiobutton', font=('Helvetica', 10), padding=10)
 style.configure('TLabel', font=('Helvetica', 12), padding=5)
 
-frame = ttk.Frame(root, padding="20 20 20 20")
+frame = ttk.Frame(root, padding="30 30 30 30")
 frame.grid(column=0, row=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-format_var = tk.StringVar(value="PNG")
-format_settings = {'PNG': ('PNG', 'png'), 'JPG': ('JPEG', 'jpg'), 'WEBP': ('WEBP', 'webp')}
+root.columnconfigure(0, weight=1)
+root.rowconfigure(0, weight=1)
 
-ttk.Label(frame, text="Select output format:").grid(column=0, row=0, sticky=tk.W)
+format_var = tk.StringVar(value="PNG")
+format_settings = {
+    'PNG': ('PNG', 'png'),
+    'JPG': ('JPEG', 'jpg'),
+    'WEBP': ('WEBP', 'webp'),
+    'BMP': ('BMP', 'bmp'),
+    'GIF': ('GIF', 'gif'),
+    'TIFF': ('TIFF', 'tiff'),
+    'ICO': ('ICO', 'ico')
+}
+
+ttk.Label(frame, text="Select output format:").grid(column=0, row=0, sticky=tk.W, pady=5)
 for i, (fmt, settings) in enumerate(format_settings.items(), start=1):
     ttk.Radiobutton(frame, text=fmt, value=fmt, variable=format_var).grid(column=0, row=i, sticky=tk.W)
 
-convert_button = ttk.Button(frame, text="Convert Image", command=convert_image)
-convert_button.grid(column=0, row=5, pady=20)
-
-root.resizable(False, False)
+convert_button = ttk.Button(frame, text="Convert Images", command=convert_images)
+convert_button.grid(column=0, row=len(format_settings) + 1, pady=20, padx=10, sticky=tk.EW)
 
 root.mainloop()
