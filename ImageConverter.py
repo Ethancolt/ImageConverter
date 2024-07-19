@@ -3,12 +3,16 @@ from tkinter import filedialog, messagebox, ttk
 from PIL import Image
 import os
 
+def toggle_all_formats(value):
+    for var in format_vars.values():
+        var.set(value)
+
 def convert_images():
     file_paths = filedialog.askopenfilenames(
         title="Select images",
         filetypes=[
             ("Image files", "*.jpg *.jpeg *.png *.webp *.bmp *.gif *.tiff *.ico"),
-            ("JPEG", "*.jpg *.jpeg"),
+            ("JPG", "*.jpg *.jpeg"),
             ("PNG", "*.png"),
             ("WEBP", "*.webp"),
             ("BMP", "*.bmp"),
@@ -19,55 +23,53 @@ def convert_images():
     if not file_paths:
         return
 
-    format_choice = format_var.get()
-    output_format, extension = format_settings[format_choice]
+    selected_formats = [fmt for fmt, var in format_vars.items() if var.get()]
 
     for file_path in file_paths:
         try:
             img = Image.open(file_path)
-            if img.mode != "RGBA" and img.mode != "RGB":
-                img = img.convert("RGBA")
-
             file_dir, file_name = os.path.split(file_path)
             base_name = os.path.splitext(file_name)[0]
-            output_path = os.path.join(file_dir, f"{base_name}.{extension}")
 
-            # Ensure no overwriting by incrementing filename
-            original_output_path = output_path
-            counter = 1
-            while os.path.exists(output_path):
-                output_path = os.path.join(file_dir, f"{base_name}({counter}).{extension}")
-                counter += 1
+            for fmt in selected_formats:
+                extension, pil_format = format_settings[fmt]
+                output_path = os.path.join(file_dir, f"{base_name}.{extension}")
 
-            if output_format in ["JPEG", "BMP"]:
-                # For formats that do not support transparency
-                if img.mode == "RGBA":
-                    background = Image.new("RGB", img.size, (255, 255, 255))
-                    background.paste(img, mask=img.split()[3])  # Mask for transparency
-                    img = background
+                counter = 1
+                while os.path.exists(output_path):
+                    output_path = os.path.join(file_dir, f"{base_name}({counter}).{extension}")
+                    counter += 1
 
-            elif output_format == "GIF":
-                # Convert transparency for GIF
-                img = img.convert("RGBA")
-                background = Image.new("RGB", img.size, (255, 255, 255))
-                background.paste(img, mask=img.split()[3])
-                img = background.convert('P', palette=Image.ADAPTIVE, colors=256)
+                if fmt in ["JPG", "BMP"]:
+                    if img.mode in ['RGBA', 'LA'] or (img.mode == 'P' and 'transparency' in img.info):
+                        background = Image.new("RGB", img.size, (255, 255, 255))
+                        background.paste(img, (0, 0), img.convert('RGBA'))
+                        img_to_save = background
+                    else:
+                        img_to_save = img.convert('RGB')
+                elif fmt == "GIF":
+                    if img.mode == 'RGBA':
+                        img_to_save = img.convert('P', palette=Image.ADAPTIVE, colors=256)
+                    else:
+                        img_to_save = img
+                elif fmt == "ICO":
+                    icon_sizes = [(16, 16), (32, 32), (48, 48), (64, 64)]  # Typical icon sizes
+                    img_to_save = img.resize(icon_sizes[-1])  # Resize to the largest size in the list
+                    img_to_save.save(output_path, format=pil_format, sizes=icon_sizes)
+                else:
+                    img_to_save = img
 
-            if output_format == "ICO":
-                # Handle ICO conversion; save it with the appropriate sizes
-                img.save(output_path, format='ICO', sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-            else:
-                img.save(output_path, format=output_format)
+                img_to_save.save(output_path, format=pil_format)
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to convert {file_path}\n{str(e)}")
+            messagebox.showerror("Error", f"Failed to convert {file_path}\nError type: {type(e).__name__}, Message: {e}")
             return
 
-    messagebox.showinfo("Success", f"All selected images have been converted to {output_format} and saved in the same directory.")
+    messagebox.showinfo("Success", "All selected images have been converted to the selected formats.")
 
 root = tk.Tk()
 root.title("Batch Image Converter")
-root.geometry("500x500")
+root.geometry("550x600")
 
 style = ttk.Style()
 style.configure('TButton', font=('Helvetica', 10), padding=10)
@@ -80,22 +82,31 @@ frame.grid(column=0, row=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 root.columnconfigure(0, weight=1)
 root.rowconfigure(0, weight=1)
 
-format_var = tk.StringVar(value="PNG")
+format_vars = {}
+select_all_var = tk.BooleanVar(value=False)
+
 format_settings = {
-    'PNG': ('PNG', 'png'),
-    'JPG': ('JPEG', 'jpg'),
-    'WEBP': ('WEBP', 'webp'),
-    'BMP': ('BMP', 'bmp'),
-    'GIF': ('GIF', 'gif'),
-    'TIFF': ('TIFF', 'tiff'),
-    'ICO': ('ICO', 'ico')
+    'PNG': ('png', 'PNG'),
+    'JPG': ('jpg', 'JPEG'),
+    'WEBP': ('webp', 'WEBP'),
+    'BMP': ('bmp', 'BMP'),
+    'GIF': ('gif', 'GIF'),
+    'TIFF': ('tiff', 'TIFF'),
+    'ICO': ('ico', 'ICO')
 }
 
-ttk.Label(frame, text="Select output format:").grid(column=0, row=0, sticky=tk.W, pady=5)
-for i, (fmt, settings) in enumerate(format_settings.items(), start=1):
-    ttk.Radiobutton(frame, text=fmt, value=fmt, variable=format_var).grid(column=0, row=i, sticky=tk.W)
+select_all_button = ttk.Checkbutton(frame, text="Select/Deselect All", variable=select_all_var,
+                                    command=lambda: toggle_all_formats(select_all_var.get()))
+select_all_button.grid(column=0, row=0, sticky=tk.W)
+
+row = 1
+for fmt, ext in format_settings.items():
+    var = tk.BooleanVar(value=False)
+    format_vars[fmt] = var
+    ttk.Checkbutton(frame, text=fmt, variable=var).grid(column=0, row=row, sticky=tk.W)
+    row += 1
 
 convert_button = ttk.Button(frame, text="Convert Images", command=convert_images)
-convert_button.grid(column=0, row=len(format_settings) + 1, pady=20, padx=10, sticky=tk.EW)
+convert_button.grid(column=0, row=row, pady=20, padx=10, sticky=tk.EW)
 
 root.mainloop()
